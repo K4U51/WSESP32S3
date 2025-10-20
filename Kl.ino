@@ -36,9 +36,10 @@ void app_main(void)
     SD_Init();
     LVGL_Init();
 
-    // ---------- Initialize LVGL UI ----------
-    Build_UI();
-
+    // ---------- Initialize LVGL UI ----------void Build_UI(void) {
+    ui_init();      // loads SquareLine layout
+    make_dial();    // call your existing LVGL drawing code
+}
     // ---------- Open log file on SD ----------
     logFile = fopen("/sdcard/gforce_log.csv", "w");
     if (logFile) {
