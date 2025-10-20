@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <math.h>
-#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "TCA9554PWR.h"
@@ -8,10 +7,17 @@
 #include "QMI8658.h"
 #include "ST7701S.h"
 #include "CST820.h"
-#include "SD_SPI.h"
-#include "LVGL_Driver.h"
-#include "Wireless.h"
+
 #include "Speedo_demo.h" // <- your LVGL UI from SquareLine
+
+#include "Wireless.h"
+#include "Gyro_QMI8658.h"
+#include "RTC_PCF85063.h"
+#include "SD_Card.h"
+#include "LVGL_Driver.h"
+#include "LVGL_Example.h"
+#include "BAT_Driver.h"
+
 
 // ---------- Global Variables ----------
 float ax = 0, ay = 0, az = 0;
