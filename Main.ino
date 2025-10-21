@@ -2,96 +2,72 @@
 #include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
 #include "TCA9554PWR.h"
 #include "PCF85063.h"
 #include "QMI8658.h"
 #include "ST7701S.h"
 #include "CST820.h"
 
-#include "Speedo_demo.h"   // Your LVGL layout from SquareLine
+#include "Speedo_demo.h"  // SquareLine UI
 #include "Wireless.h"
+#include "Gyro_QMI8658.h"
 #include "RTC_PCF85063.h"
 #include "SD_Card.h"
 #include "LVGL_Driver.h"
+#include "LVGL_Example.h"
 #include "BAT_Driver.h"
 
 // ---------- Global Variables ----------
 float ax = 0, ay = 0, az = 0;
+float smoothed_ax = 0, smoothed_ay = 0;
 FILE *logFile = NULL;
-extern RTC_DateTypeDef datetime;  // from RTC_PCF85063.h
+extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
-// LVGL objects
-lv_obj_t *gball_dot = NULL;
-const int centerX = 120;  // Center of the dial (adjust for your layout)
-const int centerY = 120;
-const int radius  = 80;   // Radius of G-circle in pixels
-
-// ---------- Function Prototypes ----------
-void Build_UI(void);
-void getAccelerometerData(void);
-void updateForceGauge(float x, float y);
-void create_gball_dot(void);
-void update_gball_dot(float x, float y);
+// LVGL UI objects
+static lv_obj_t *gforce_dot;
+static lv_obj_t *gforce_screen;
 
 // ---------- Accelerometer Reading ----------
 void getAccelerometerData() {
-    getAccelerometer(); // Reads accelerometer in Gs from QMI8658
-    ax = Accel.x;
-    ay = Accel.y;
-    az = Accel.z;
+    QMI8658_Read_Accel(&ax, &ay, &az);
 }
 
-// ---------- LVGL UI Setup ----------
+// ---------- G-Force Dot Update ----------
+void update_dot_position(float ax, float ay) {
+    if (!gforce_dot) return;
+
+    // Apply smoothing (simple low-pass filter)
+    const float alpha = 0.2f;  // 0.0 = very smooth, 1.0 = no smoothing
+    smoothed_ax = smoothed_ax * (1.0f - alpha) + ax * alpha;
+    smoothed_ay = smoothed_ay * (1.0f - alpha) + ay * alpha;
+
+    // Scale for display motion
+    float scale = 40.0f;
+    int x_offset = (int)(smoothed_ax * scale);
+    int y_offset = (int)(-smoothed_ay * scale);  // invert Y to match display
+
+    lv_obj_align(gforce_dot, LV_ALIGN_CENTER, x_offset, y_offset);
+}
+
+// ---------- LVGL Setup ----------
 void Build_UI(void) {
-    ui_init();       // Loads your SquareLine LVGL layout
-    make_dial();     // Custom dial background, if defined
-    create_gball_dot();  // Create dot object on top of dial
-}
+    ui_init();        // Loads SquareLine layout
+    make_dial();      // Custom dial graphics if any
 
-// ---------- Create Dot ----------
-void create_gball_dot(void) {
-    gball_dot = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(gball_dot, 14, 14);
-    lv_obj_set_style_radius(gball_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(gball_dot, lv_color_hex(0xFF0000), 0); // Red dot
-    lv_obj_clear_flag(gball_dot, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(gball_dot, centerX - 7, centerY - 7); // center it
-}
+    gforce_screen = lv_scr_act();
 
-// ---------- Update Dot Position ----------
-void update_gball_dot(float x, float y) {
-    // Clamp values to ±2G
-    if (x > 2.0f) x = 2.0f;
-    if (x < -2.0f) x = -2.0f;
-    if (y > 2.0f) y = 2.0f;
-    if (y < -2.0f) y = -2.0f;
-
-    // Map ±2G → ±radius pixels
-    int posX = centerX + (int)((x / 2.0f) * radius);
-    int posY = centerY - (int)((y / 2.0f) * radius); // invert Y axis for display
-
-    // Move the dot
-    lv_obj_set_pos(gball_dot, posX - 7, posY - 7);
-}
-
-// ---------- G-Force Visualization ----------
-void updateForceGauge(float x, float y) {
-    // Update moving dot position
-    update_gball_dot(x, y);
-
-    // Optionally calculate and print total G
-    float gForce = sqrtf(x * x + y * y);
-    if (gForce > 2.0f) gForce = 2.0f;
-
-    // Debug output
-    printf("X: %.2f  Y: %.2f  Total G: %.2f\n", x, y, gForce);
+    // Create red dot
+    gforce_dot = lv_obj_create(gforce_screen);
+    lv_obj_set_size(gforce_dot, 10, 10);
+    lv_obj_set_style_bg_color(gforce_dot, lv_color_hex(0xFF0000), LV_PART_MAIN);
+    lv_obj_clear_flag(gforce_dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(gforce_dot, LV_ALIGN_CENTER, 0, 0);
 }
 
 // ---------- Main Application ----------
 void app_main(void)
 {
-    // ---------- Hardware Initialization ----------
+    // ---------- Initialize Hardware ----------
     Wireless_Init();
     Flash_Searching();
     I2C_Init();
@@ -118,12 +94,14 @@ void app_main(void)
 
     // ---------- Main Loop ----------
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(50)); // ~20Hz refresh rate
+        vTaskDelay(pdMS_TO_TICKS(50)); // 20Hz refresh
 
-        lv_timer_handler();             // Update LVGL UI
+        lv_timer_handler();
         PCF85063_Read_Time(&datetime);
         getAccelerometerData();
-        updateForceGauge(ax, ay);
+
+        // Update LVGL dot position (smoothed)
+        update_dot_position(ax, ay);
 
         // ---------- Log to SD ----------
         if (logFile) {
