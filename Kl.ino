@@ -2,37 +2,30 @@
 #include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
 #include "TCA9554PWR.h"
 #include "PCF85063.h"
 #include "QMI8658.h"
 #include "ST7701S.h"
 #include "CST820.h"
 
-#include "Speedo_demo.h" // <- your LVGL UI from SquareLine
+#include "Speedo_demo.h"   // <- G-Force UI header (Build_UI + update_gforce_marker)
 
 #include "Wireless.h"
 #include "Gyro_QMI8658.h"
 #include "RTC_PCF85063.h"
 #include "SD_Card.h"
 #include "LVGL_Driver.h"
-#include "LVGL_Example.h"
 #include "BAT_Driver.h"
-
 
 // ---------- Global Variables ----------
 float ax = 0, ay = 0, az = 0;
 FILE *logFile = NULL;
 extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
-// ---------- Accelerometer Reading ----------
+// ---------- Read Accelerometer Data ----------
 void getAccelerometerData() {
     QMI8658_Read_Accel(&ax, &ay, &az);
-}
-
-// ---------- LVGL Setup ----------
-void Build_UI(void) {
-    ui_init();        // Loads SquareLine project layout
-    make_dial();      // Draws custom dial graphics
 }
 
 // ---------- Main Application ----------
@@ -51,7 +44,7 @@ void app_main(void)
     LVGL_Init();
 
     // ---------- Initialize UI ----------
-    Build_UI();
+    Build_UI();  // from Speedo_demo.h (your G-Force dial)
 
     // ---------- Open SD Log ----------
     logFile = fopen("/sdcard/gforce_log.csv", "w");
@@ -65,14 +58,14 @@ void app_main(void)
 
     // ---------- Main Loop ----------
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(50)); // 20Hz refresh
+        vTaskDelay(pdMS_TO_TICKS(50)); // 20Hz update
 
-        lv_timer_handler();
-        PCF85063_Read_Time(&datetime);
-        getAccelerometerData();
+        lv_timer_handler();             // LVGL refresh
+        PCF85063_Read_Time(&datetime);  // Update RTC
+        getAccelerometerData();         // Read accelerometer
 
-        // Update LVGL gauge or dial position
-        update_dial_marker(ax, ay);
+        // Update LVGL visualization
+        update_gforce_marker(ax, ay);
 
         // ---------- Log to SD ----------
         if (logFile) {
@@ -83,6 +76,6 @@ void app_main(void)
         }
     }
 
-    // ---------- Close file (never reached normally) ----------
+    // ---------- Cleanup (never normally reached) ----------
     if (logFile) fclose(logFile);
 }
