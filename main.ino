@@ -28,6 +28,12 @@ float smoothed_ax = 0;
 float smoothed_ay = 0;
 float smoothed_az = 0;
 
+// Peak values
+float peak_accel = 0;
+float peak_brake = 0;
+float peak_left  = 0;
+float peak_right = 0;
+
 // ---------- Simple linear interpolation ----------
 static inline float lerp(float a, float b, float t) {
     return a + (b - a) * t;
@@ -71,11 +77,16 @@ void app_main(void) {
     SD_Init();
     LVGL_Init();
 
-// ---------- Initialize UI ----------
-LVGL_Init();        // Must come first to set up LVGL
-ui_init();          // Initialize SquareLine UI screens and objects
-hook_gforce_ui();   // Connect LVGL objects to GForceUI pointers
-printf("✅ UI loaded and hooks applied.\n");
+    // ---------- Initialize UI ----------
+    ui_init();
+    hook_gforce_ui();   // Assign LVGL objects to GForceUI
+    printf("✅ UI loaded and hooks applied.\n");
+
+    // ---------- Reset peak values at session start ----------
+    peak_accel = 0;
+    peak_brake = 0;
+    peak_left  = 0;
+    peak_right = 0;
 
     // Set initial dot position if available
     if (ui_dot) lv_obj_set_pos(ui_dot, 240, 240);
@@ -107,11 +118,17 @@ printf("✅ UI loaded and hooks applied.\n");
         smoothed_ay = smoothed_ay * (1.0 - SMOOTH_FACTOR) + ay * SMOOTH_FACTOR;
         smoothed_az = smoothed_az * (1.0 - SMOOTH_FACTOR) + az * SMOOTH_FACTOR;
 
+        // Update peak values
+        if (smoothed_ax > peak_accel) peak_accel = smoothed_ax;
+        if (smoothed_ax < -peak_brake) peak_brake = -smoothed_ax;
+        if (smoothed_ay < -peak_left)  peak_left  = -smoothed_ay;
+        if (smoothed_ay > peak_right)  peak_right = smoothed_ay;
+
         // Update GForceUI
         update_gforce_ui(smoothed_ax, smoothed_ay, smoothed_az);
 
-        // Optional: Update primary gauge from SquareLine
-        if (ui_gauge_accel) lv_gauge_set_value(ui_gauge_accel, 0, mapFloatToGauge(smoothed_ay, -G_MAX, G_MAX, 0, 100));
+        // Optional: Update primary gauge from SquareLine (using forward acceleration)
+        if (ui_gauge_accel) lv_gauge_set_value(ui_gauge_accel, 0, mapFloatToGauge(smoothed_ax, -G_MAX, G_MAX, 0, 100));
 
         // Log to SD
         if (logFile) {
