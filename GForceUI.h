@@ -6,7 +6,7 @@ extern float ax, ay, az;
 extern float smoothed_ax, smoothed_ay;
 extern float peak_accel, peak_brake, peak_left, peak_right;
 
-// ---------- LVGL Objects ----------
+// ---------- LVGL Objects (initialized to nullptr) ----------
 extern lv_obj_t *ui_dot;
 extern lv_obj_t *ui_label_left;
 extern lv_obj_t *ui_label_right;
