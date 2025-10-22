@@ -9,8 +9,6 @@
 #include "ST7701S.h"
 #include "CST820.h"
 
-#include "Speedo_demo.h"   // <- G-Force UI header (Build_UI + update_gforce_marker)
-
 #include "Wireless.h"
 #include "Gyro_QMI8658.h"
 #include "RTC_PCF85063.h"
@@ -18,19 +16,70 @@
 #include "LVGL_Driver.h"
 #include "BAT_Driver.h"
 
+#include "ui.h"   // ← SquareLine Studio generated UI header
+
 // ---------- Global Variables ----------
 float ax = 0, ay = 0, az = 0;
 FILE *logFile = NULL;
 extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
-// ---------- Read Accelerometer Data ----------
+// ---------- LVGL Object References ----------
+extern lv_obj_t *ui_dot;
+extern lv_obj_t *ui_dial_image;
+extern lv_obj_t *ui_label_left;
+extern lv_obj_t *ui_label_right;
+extern lv_obj_t *ui_label_accel;
+extern lv_obj_t *ui_label_brake;
+
+// ---------- Dial Settings ----------
+#define DIAL_CENTER_X 240
+#define DIAL_CENTER_Y 240
+#define DIAL_SCALE    90.0f
+#define UPDATE_RATE_MS 50
+
+// ---------- Function: Read Accelerometer ----------
 void getAccelerometerData() {
     QMI8658_Read_Accel(&ax, &ay, &az);
+}
+
+// ---------- Function: Update G-Force Visualization ----------
+void update_gforce_ui(float ax, float ay, float az) {
+    // Clamp ±1.5g
+    if (ax > 1.5f) ax = 1.5f;
+    if (ax < -1.5f) ax = -1.5f;
+    if (ay > 1.5f) ay = 1.5f;
+    if (ay < -1.5f) ay = -1.5f;
+
+    // Convert G-force → pixel displacement
+    int16_t dot_x = DIAL_CENTER_X + (int16_t)(ax * DIAL_SCALE);
+    int16_t dot_y = DIAL_CENTER_Y - (int16_t)(ay * DIAL_SCALE);
+
+    // Move red dot (centered on dial)
+    lv_obj_set_pos(ui_dot, dot_x, dot_y);
+
+    // Update label text for each direction
+    char buf[16];
+
+    // Longitudinal: forward accel & braking
+    sprintf(buf, "%.2f", ay > 0 ? ay : 0);
+    lv_label_set_text(ui_label_accel, buf);
+
+    sprintf(buf, "%.2f", ay < 0 ? -ay : 0);
+    lv_label_set_text(ui_label_brake, buf);
+
+    // Lateral: left & right turn
+    sprintf(buf, "%.2f", ax < 0 ? -ax : 0);
+    lv_label_set_text(ui_label_left, buf);
+
+    sprintf(buf, "%.2f", ax > 0 ? ax : 0);
+    lv_label_set_text(ui_label_right, buf);
 }
 
 // ---------- Main Application ----------
 void app_main(void)
 {   
+    printf("🚀 Starting G-Force UI with SquareLine...\n");
+
     // ---------- Initialize Hardware ----------
     Wireless_Init();
     Flash_Searching();
@@ -43,8 +92,12 @@ void app_main(void)
     SD_Init();
     LVGL_Init();
 
-    // ---------- Initialize UI ----------
-    Build_UI();  // from Speedo_demo.h (your G-Force dial)
+    // ---------- Initialize SquareLine UI ----------
+    ui_init();
+    printf("✅ UI loaded.\n");
+
+    // Center dot initially
+    lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
 
     // ---------- Open SD Log ----------
     logFile = fopen("/sdcard/gforce_log.csv", "w");
@@ -53,21 +106,21 @@ void app_main(void)
         fflush(logFile);
         printf("✅ Logging started: /sdcard/gforce_log.csv\n");
     } else {
-        printf("⚠️ SD log file could not be opened.\n");
+        printf("⚠️ Could not open SD log file.\n");
     }
 
     // ---------- Main Loop ----------
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(50)); // 20Hz update
+        vTaskDelay(pdMS_TO_TICKS(UPDATE_RATE_MS));
 
         lv_timer_handler();             // LVGL refresh
         PCF85063_Read_Time(&datetime);  // Update RTC
-        getAccelerometerData();         // Read accelerometer
+        getAccelerometerData();         // Get G values
 
-        // Update LVGL visualization
-        update_gforce_marker(ax, ay);
+        // Update UI
+        update_gforce_ui(ax, ay, az);
 
-        // ---------- Log to SD ----------
+        // Log to SD card
         if (logFile) {
             fprintf(logFile, "%02d:%02d:%02d,%.3f,%.3f,%.3f\n",
                     datetime.hour, datetime.minute, datetime.second,
@@ -76,6 +129,6 @@ void app_main(void)
         }
     }
 
-    // ---------- Cleanup (never normally reached) ----------
+    // ---------- Cleanup (never reached) ----------
     if (logFile) fclose(logFile);
 }
