@@ -1,5 +1,5 @@
 #pragma once
-#include "GForceUI.h"
-#include "ui.h" // SquareLine objects
+#include "lvgl.h"
 
+// Hook function to connect SquareLine objects to GForceUI
 void hook_gforce_ui(void);
