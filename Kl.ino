@@ -16,10 +16,11 @@
 #include "LVGL_Driver.h"
 #include "BAT_Driver.h"
 
-#include "ui.h"   // ← SquareLine Studio generated UI header
+#include "ui.h"   // ← SquareLine Studio generated header
 
 // ---------- Global Variables ----------
 float ax = 0, ay = 0, az = 0;
+float smoothed_ax = 0, smoothed_ay = 0;
 FILE *logFile = NULL;
 extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
@@ -37,6 +38,14 @@ extern lv_obj_t *ui_label_brake;
 #define DIAL_SCALE    90.0f
 #define UPDATE_RATE_MS 50
 
+// ---------- Lerp Factor (0–1: smaller = smoother) ----------
+#define LERP_FACTOR 0.15f
+
+// ---------- Helper: Linear Interpolation ----------
+static inline float lerp(float a, float b, float t) {
+    return a + (b - a) * t;
+}
+
 // ---------- Function: Read Accelerometer ----------
 void getAccelerometerData() {
     QMI8658_Read_Accel(&ax, &ay, &az);
@@ -50,28 +59,32 @@ void update_gforce_ui(float ax, float ay, float az) {
     if (ay > 1.5f) ay = 1.5f;
     if (ay < -1.5f) ay = -1.5f;
 
-    // Convert G-force → pixel displacement
-    int16_t dot_x = DIAL_CENTER_X + (int16_t)(ax * DIAL_SCALE);
-    int16_t dot_y = DIAL_CENTER_Y - (int16_t)(ay * DIAL_SCALE);
+    // Apply smooth interpolation
+    smoothed_ax = lerp(smoothed_ax, ax, LERP_FACTOR);
+    smoothed_ay = lerp(smoothed_ay, ay, LERP_FACTOR);
 
-    // Move red dot (centered on dial)
+    // Convert G-force → pixel displacement
+    int16_t dot_x = DIAL_CENTER_X + (int16_t)(smoothed_ax * DIAL_SCALE);
+    int16_t dot_y = DIAL_CENTER_Y - (int16_t)(smoothed_ay * DIAL_SCALE);
+
+    // Move dot smoothly
     lv_obj_set_pos(ui_dot, dot_x, dot_y);
 
     // Update label text for each direction
     char buf[16];
 
     // Longitudinal: forward accel & braking
-    sprintf(buf, "%.2f", ay > 0 ? ay : 0);
+    sprintf(buf, "%.2f", smoothed_ay > 0 ? smoothed_ay : 0);
     lv_label_set_text(ui_label_accel, buf);
 
-    sprintf(buf, "%.2f", ay < 0 ? -ay : 0);
+    sprintf(buf, "%.2f", smoothed_ay < 0 ? -smoothed_ay : 0);
     lv_label_set_text(ui_label_brake, buf);
 
     // Lateral: left & right turn
-    sprintf(buf, "%.2f", ax < 0 ? -ax : 0);
+    sprintf(buf, "%.2f", smoothed_ax < 0 ? -smoothed_ax : 0);
     lv_label_set_text(ui_label_left, buf);
 
-    sprintf(buf, "%.2f", ax > 0 ? ax : 0);
+    sprintf(buf, "%.2f", smoothed_ax > 0 ? smoothed_ax : 0);
     lv_label_set_text(ui_label_right, buf);
 }
 
@@ -117,7 +130,7 @@ void app_main(void)
         PCF85063_Read_Time(&datetime);  // Update RTC
         getAccelerometerData();         // Get G values
 
-        // Update UI
+        // Update UI with smooth motion
         update_gforce_ui(ax, ay, az);
 
         // Log to SD card
