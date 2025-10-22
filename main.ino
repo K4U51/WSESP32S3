@@ -46,12 +46,12 @@ static inline float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
-// ---------- Function: Read Accelerometer ----------
+// ---------- Read Accelerometer Data ----------
 void getAccelerometerData() {
     QMI8658_Read_Accel(&ax, &ay, &az);
 }
 
-// ---------- Function: Update G-Force Visualization ----------
+// ---------- Update G-Force Visualization ----------
 void update_gforce_ui(float ax, float ay, float az) {
     // Clamp ±1.5g
     if (ax > 1.5f) ax = 1.5f;
@@ -59,7 +59,7 @@ void update_gforce_ui(float ax, float ay, float az) {
     if (ay > 1.5f) ay = 1.5f;
     if (ay < -1.5f) ay = -1.5f;
 
-    // Apply smooth interpolation
+    // Apply smoothing
     smoothed_ax = lerp(smoothed_ax, ax, LERP_FACTOR);
     smoothed_ay = lerp(smoothed_ay, ay, LERP_FACTOR);
 
@@ -67,30 +67,34 @@ void update_gforce_ui(float ax, float ay, float az) {
     int16_t dot_x = DIAL_CENTER_X + (int16_t)(smoothed_ax * DIAL_SCALE);
     int16_t dot_y = DIAL_CENTER_Y - (int16_t)(smoothed_ay * DIAL_SCALE);
 
-    // Move dot smoothly
-    lv_obj_set_pos(ui_dot, dot_x, dot_y);
+    // Move dot
+    if (ui_dot)
+        lv_obj_set_pos(ui_dot, dot_x, dot_y);
 
-    // Update label text for each direction
+    // Update labels for live values
     char buf[16];
 
-    // Longitudinal: forward accel & braking
-    sprintf(buf, "%.2f", smoothed_ay > 0 ? smoothed_ay : 0);
-    lv_label_set_text(ui_label_accel, buf);
-
-    sprintf(buf, "%.2f", smoothed_ay < 0 ? -smoothed_ay : 0);
-    lv_label_set_text(ui_label_brake, buf);
-
-    // Lateral: left & right turn
-    sprintf(buf, "%.2f", smoothed_ax < 0 ? -smoothed_ax : 0);
-    lv_label_set_text(ui_label_left, buf);
-
-    sprintf(buf, "%.2f", smoothed_ax > 0 ? smoothed_ax : 0);
-    lv_label_set_text(ui_label_right, buf);
+    if (ui_label_accel) {
+        sprintf(buf, "%.2f", smoothed_ay > 0 ? smoothed_ay : 0);
+        lv_label_set_text(ui_label_accel, buf);
+    }
+    if (ui_label_brake) {
+        sprintf(buf, "%.2f", smoothed_ay < 0 ? -smoothed_ay : 0);
+        lv_label_set_text(ui_label_brake, buf);
+    }
+    if (ui_label_left) {
+        sprintf(buf, "%.2f", smoothed_ax < 0 ? -smoothed_ax : 0);
+        lv_label_set_text(ui_label_left, buf);
+    }
+    if (ui_label_right) {
+        sprintf(buf, "%.2f", smoothed_ax > 0 ? smoothed_ax : 0);
+        lv_label_set_text(ui_label_right, buf);
+    }
 }
 
 // ---------- Main Application ----------
 void app_main(void)
-{   
+{
     printf("🚀 Starting G-Force UI with SquareLine...\n");
 
     // ---------- Initialize Hardware ----------
@@ -110,7 +114,8 @@ void app_main(void)
     printf("✅ UI loaded.\n");
 
     // Center dot initially
-    lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
+    if (ui_dot)
+        lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
 
     // ---------- Open SD Log ----------
     logFile = fopen("/sdcard/gforce_log.csv", "w");
@@ -126,14 +131,14 @@ void app_main(void)
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(UPDATE_RATE_MS));
 
-        lv_timer_handler();             // LVGL refresh
-        PCF85063_Read_Time(&datetime);  // Update RTC
-        getAccelerometerData();         // Get G values
+        lv_timer_handler();
+        PCF85063_Read_Time(&datetime);
+        getAccelerometerData();
 
-        // Update UI with smooth motion
+        // Update LVGL visualization
         update_gforce_ui(ax, ay, az);
 
-        // Log to SD card
+        // Log to SD
         if (logFile) {
             fprintf(logFile, "%02d:%02d:%02d,%.3f,%.3f,%.3f\n",
                     datetime.hour, datetime.minute, datetime.second,
@@ -142,6 +147,6 @@ void app_main(void)
         }
     }
 
-    // ---------- Cleanup (never reached) ----------
-    if (logFile) fclose(logFile);
+    if (logFile)
+        fclose(logFile);
 }
