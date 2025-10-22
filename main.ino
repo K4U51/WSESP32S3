@@ -15,18 +15,34 @@
 #include "BAT_Driver.h"
 #include "ui.h"           // SquareLine Studio UI
 #include "GForceUI.h"     // Modular G-Force handling
-#include "ui_hook.h"      // Hook LVGL objects to GForceUI
+#include "ui_hook.h"      // Connect LVGL objects to GForceUI
 
 FILE *logFile = NULL;
 extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
-extern float peak_accel, peak_brake, peak_left, peak_right; // Peaks from GForceUI
-
 #define UPDATE_RATE_MS 50
+#define SMOOTH_FACTOR 0.2
+#define G_MAX 2.5f    // Max G for mapping gauges
 
-// ---------- Helper: generate unique filename ----------
+float smoothed_ax = 0;
+float smoothed_ay = 0;
+float smoothed_az = 0;
+
+// ---------- Simple linear interpolation ----------
+static inline float lerp(float a, float b, float t) {
+    return a + (b - a) * t;
+}
+
+// Map float value to gauge integer range
+static int mapFloatToGauge(float value, float min_val, float max_val, int gauge_min, int gauge_max) {
+    if (value < min_val) value = min_val;
+    if (value > max_val) value = max_val;
+    return (int)((value - min_val) * (gauge_max - gauge_min) / (max_val - min_val) + gauge_min);
+}
+
+// ---------- Generate unique SD log filename ----------
 static void generate_log_filename(char *filename, int max_len) {
-    PCF85063_Read_Time(&datetime); // read RTC first
+    PCF85063_Read_Time(&datetime);
     int session = 1;
     do {
         snprintf(filename, max_len,
@@ -57,11 +73,13 @@ void app_main(void) {
 
     // ---------- Initialize UI ----------
     ui_init();
-    hook_gforce_ui();   // Connect SquareLine LVGL objects to GForceUI
-    if (ui_dot) lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
+    hook_gforce_ui();   // Assign LVGL objects to GForceUI
     printf("✅ UI loaded and hooks applied.\n");
 
-    // ---------- Generate log filename ----------
+    // Set initial dot position if available
+    if (ui_dot) lv_obj_set_pos(ui_dot, 240, 240);
+
+    // ---------- Generate SD log filename ----------
     char filename[128];
     generate_log_filename(filename, sizeof(filename));
 
@@ -80,17 +98,26 @@ void app_main(void) {
 
         lv_timer_handler();        // Refresh LVGL
 
-        getAccelerometerData();    // Read accelerometer
+        // Read accelerometer
+        getAccelerometerData();
 
-        // ---------- Update UI ----------
-        update_gforce_ui(ax, ay, az);  // GForceUI handles smoothing & gauge updates
+        // Smooth accelerometer
+        smoothed_ax = smoothed_ax * (1.0 - SMOOTH_FACTOR) + ax * SMOOTH_FACTOR;
+        smoothed_ay = smoothed_ay * (1.0 - SMOOTH_FACTOR) + ay * SMOOTH_FACTOR;
+        smoothed_az = smoothed_az * (1.0 - SMOOTH_FACTOR) + az * SMOOTH_FACTOR;
 
-        // ---------- Log to SD ----------
+        // Update GForceUI
+        update_gforce_ui(smoothed_ax, smoothed_ay, smoothed_az);
+
+        // Optional: Update any primary gauge from SquareLine
+        if (ui_gauge_accel) lv_gauge_set_value(ui_gauge_accel, 0, mapFloatToGauge(smoothed_ay, -G_MAX, G_MAX, 0, 100));
+
+        // Log to SD
         if (logFile) {
             fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                     datetime.year, datetime.month, datetime.day,
                     datetime.hour, datetime.minute, datetime.second,
-                    ax, ay, az,
+                    smoothed_ax, smoothed_ay, smoothed_az,
                     peak_accel, peak_brake, peak_left, peak_right);
             fflush(logFile);
         }
