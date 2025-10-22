@@ -92,7 +92,7 @@ void update_gforce_ui(float ax, float ay, float az) {
     }
 }
 
-// ---------- Main Application ----------
+/// ---------- Main Application ----------
 void app_main(void)
 {
     printf("🚀 Starting G-Force UI with SquareLine...\n");
@@ -153,4 +153,3 @@ void app_main(void)
 
     if (logFile)
         fclose(logFile);
-}
