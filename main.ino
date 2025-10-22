@@ -109,7 +109,7 @@ void app_main(void) {
         // Update GForceUI
         update_gforce_ui(smoothed_ax, smoothed_ay, smoothed_az);
 
-        // Optional: Update any primary gauge from SquareLine
+        // Optional: Update primary gauge from SquareLine
         if (ui_gauge_accel) lv_gauge_set_value(ui_gauge_accel, 0, mapFloatToGauge(smoothed_ay, -G_MAX, G_MAX, 0, 100));
 
         // Log to SD
