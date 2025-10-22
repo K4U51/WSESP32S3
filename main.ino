@@ -15,6 +15,7 @@
 #include "BAT_Driver.h"
 #include "ui.h"           // SquareLine Studio UI
 #include "GForceUI.h"     // Modular G-Force handling
+#include "ui_hook.h"      // <-- Add this include
 
 FILE *logFile = NULL;
 extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
@@ -67,9 +68,8 @@ void app_main(void) {
 
     // ---------- Initialize UI ----------
     ui_init();
-    printf("✅ UI loaded.\n");
-
-    if (ui_dot) lv_obj_set_pos(ui_dot, 240, 240);
+    hook_gforce_ui();   // <-- Hook LVGL objects to GForceUI
+    printf("✅ UI loaded and hooks applied.\n");
 
     // ---------- Generate log filename ----------
     char filename[128];
@@ -97,16 +97,8 @@ void app_main(void) {
         smoothed_ay = smoothed_ay * (1.0 - SMOOTH_FACTOR) + ay * SMOOTH_FACTOR;
         smoothed_az = smoothed_az * (1.0 - SMOOTH_FACTOR) + az * SMOOTH_FACTOR;
 
-        // ---------- Map values to gauge range ----------
-        int gauge_ax = mapFloatToGauge(smoothed_ax, -2.5f, 2.5f, 0, 100);  // Adjust min/max to match your SquareLine gauge
-        int gauge_ay = mapFloatToGauge(smoothed_ay, -2.5f, 2.5f, 0, 100);
-        int gauge_az = mapFloatToGauge(smoothed_az, -2.5f, 2.5f, 0, 100);
-
         // ---------- Update UI ----------
         update_gforce_ui(smoothed_ax, smoothed_ay, smoothed_az);
-        
-        // Example: if you have a specific gauge object from SquareLine:
-        if (ui_gauge) lv_gauge_set_value(ui_gauge, 0, gauge_ax); // primary gauge axis
 
         // ---------- Log to SD ----------
         if (logFile) {
