@@ -1,0 +1,122 @@
+Perfect 👌 — here’s exactly how to build your G-Force gauge screen in SquareLine Studio so it matches the updated GforceUI.cpp file.
+Follow this step-by-step to ensure every object name and hierarchy lines up perfectly with your C++ code.
+
+⸻
+
+🧩 SquareLine Screen Setup
+
+Screen name:
+
+GForce_Screen
+
+Parent structure:
+
+GForce_Screen
+│
+├── ui_canvas_gtrace   ← background canvas for trail
+├── ui_dot             ← moving dot
+├── ui_label_accel
+├── ui_label_brake
+├── ui_label_left
+├── ui_label_right
+├── ui_label_peak_accel
+├── ui_label_peak_brake
+├── ui_label_peak_left
+├── ui_label_peak_right
+└── (optional) ui_gauge_accel / ui_gauge_brake / ui_gauge_left / ui_gauge_right
+
+
+⸻
+
+⚙️ Object Details
+
+1. Canvas (for trail)
+	•	Name: ui_canvas_gtrace
+	•	Type: Canvas
+	•	Size: 480 × 480 (or match your screen’s resolution)
+	•	Position: 0,0
+	•	Background: Black
+	•	Border: None
+	•	Z-order: Send to back (so dot and labels appear on top)
+	•	Custom ID: ui_canvas_gtrace (important — case sensitive)
+
+⸻
+
+2. Moving Dot
+	•	Name: ui_dot
+	•	Type: Object (Rectangle or Circle)
+	•	Size: 16 × 16
+	•	Radius: 8 (makes it circular)
+	•	Color: Yellow (default)
+	•	Border: None
+	•	Position: 240, 240 (center of screen, or adjust for your layout)
+	•	Z-order: Above canvas
+	•	Custom ID: ui_dot
+
+⸻
+
+3. Axis Labels (Live G-Values)
+
+Object	Label	Position (approx)	Alignment	Notes
+ui_label_accel	“0.00”	(240, 420)	Center bottom	shows +Y
+ui_label_brake	“0.00”	(240, 60)	Center top	shows −Y
+ui_label_left	“0.00”	(60, 240)	Left center	shows −X
+ui_label_right	“0.00”	(420, 240)	Right center	shows +X
+
+Font: montserrat_bold_28 (or any clear digital-style font)
+Color: White
+
+⸻
+
+4. Peak Labels (optional, smaller font)
+
+| Object | Label | Position | Notes |
+|:–|:–|:–|
+| ui_label_peak_accel | “0.00” | (240, 450) | Peak +Y |
+| ui_label_peak_brake | “0.00” | (240, 30) | Peak −Y |
+| ui_label_peak_left | “0.00” | (30, 240) | Peak −X |
+| ui_label_peak_right | “0.00” | (450, 240) | Peak +X |
+
+You can use a smaller font (like montserrat_bold_20) and a grey color to distinguish these.
+
+⸻
+
+5. Optional Quadrant Labels
+
+For clarity, you can add static text objects:
+	•	"ACCEL" at bottom
+	•	"BRAKE" at top
+	•	"LEFT" on left
+	•	"RIGHT" on right
+
+These are purely visual; not referenced in code.
+
+⸻
+
+6. Optional Bar Gauges (for reference)
+
+If you kept the four bar-style gauges in your UI, name them exactly:
+
+ui_gauge_accel
+ui_gauge_brake
+ui_gauge_left
+ui_gauge_right
+
+They’ll continue to update automatically in update_gforce_ui().
+
+⸻
+
+🧠 Final Notes
+	•	Your loop() or task should call:
+
+getAccelerometerData();
+update_gforce_ui(ax, ay, az);
+
+about every 50–100 ms.
+
+	•	Ensure the screen is active in SquareLine (so ui_dot and ui_canvas_gtrace are loaded).
+	•	LVGL automatically redraws the canvas each update — no manual refresh needed.
+
+⸻
+
+Would you like me to generate the SquareLine export preview (a JSON-style hierarchy example you can import directly or reference) so you don’t have to manually rebuild every object?
