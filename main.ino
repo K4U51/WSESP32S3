@@ -117,25 +117,29 @@ void app_main(void)
     if (ui_dot)
         lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
 
-    // ---------- Open SD Log ----------
-    logFile = fopen("/sdcard/gforce_log.csv", "w");
+    // ---------- Open SD Log with unique filename ----------
+    char filename[64];
+    sprintf(filename, "/sdcard/gforce_%02d%02d%02d.csv",
+            datetime.hour, datetime.minute, datetime.second);
+
+    logFile = fopen(filename, "w");
     if (logFile) {
         fprintf(logFile, "Timestamp,Ax,Ay,Az\n");
         fflush(logFile);
-        printf("✅ Logging started: /sdcard/gforce_log.csv\n");
+        printf("✅ Logging started: %s\n", filename);
     } else {
-        printf("⚠️ Could not open SD log file.\n");
+        printf("⚠️ Could not open SD log file: %s\n", filename);
     }
 
     // ---------- Main Loop ----------
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(UPDATE_RATE_MS));
 
-        lv_timer_handler();
-        PCF85063_Read_Time(&datetime);
-        getAccelerometerData();
+        lv_timer_handler();             // Refresh LVGL
+        PCF85063_Read_Time(&datetime);  // Update RTC
+        getAccelerometerData();         // Read accelerometer
 
-        // Update LVGL visualization
+        // Update UI with smooth motion
         update_gforce_ui(ax, ay, az);
 
         // Log to SD
