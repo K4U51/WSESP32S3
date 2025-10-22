@@ -71,10 +71,11 @@ void app_main(void) {
     SD_Init();
     LVGL_Init();
 
-    // ---------- Initialize UI ----------
-    ui_init();
-    hook_gforce_ui();   // Assign LVGL objects to GForceUI
-    printf("✅ UI loaded and hooks applied.\n");
+// ---------- Initialize UI ----------
+LVGL_Init();        // Must come first to set up LVGL
+ui_init();          // Initialize SquareLine UI screens and objects
+hook_gforce_ui();   // Connect LVGL objects to GForceUI pointers
+printf("✅ UI loaded and hooks applied.\n");
 
     // Set initial dot position if available
     if (ui_dot) lv_obj_set_pos(ui_dot, 240, 240);
