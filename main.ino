@@ -2,6 +2,7 @@
 #include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_vfs.h"   // For file existence check
 
 #include "TCA9554PWR.h"
 #include "PCF85063.h"
@@ -91,7 +92,7 @@ void update_gforce_ui(float ax, float ay, float az) {
         lv_label_set_text(ui_label_right, buf);
     }
 }
-
+ // ---------- Main App ----------
 void app_main(void)
 {
     printf("🚀 Starting G-Force UI with SquareLine...\n");
@@ -116,23 +117,27 @@ void app_main(void)
     if (ui_dot)
         lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
 
-    // ---------- Read RTC to use for filename ----------
+    // ---------- Read RTC first ----------
     PCF85063_Read_Time(&datetime);
 
-    // ---------- Open SD Log with unique filename ----------
-    char filename[64];
-    int session = 0;
-
-    FILE *tempFile;
+    // ---------- Generate unique filename with session counter ----------
+    char filename[128];
+    int session = 1;
     do {
         sprintf(filename, "/sdcard/gforce_%04d%02d%02d_%02d%02d%02d_%d.csv",
                 datetime.year, datetime.month, datetime.day,
                 datetime.hour, datetime.minute, datetime.second,
-                session++);
-        tempFile = fopen(filename, "r");
-        if (tempFile) fclose(tempFile);  // File exists, increment session
-    } while (tempFile != NULL);
+                session);
+        FILE *file = fopen(filename, "r");
+        if (file) {
+            fclose(file);
+            session++;
+        } else {
+            break; // file does not exist, safe to use
+        }
+    } while (1);
 
+    // Open the file for writing
     logFile = fopen(filename, "w");
     if (logFile) {
         fprintf(logFile, "Timestamp,Ax,Ay,Az\n");
