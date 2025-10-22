@@ -15,25 +15,14 @@
 #include "BAT_Driver.h"
 #include "ui.h"           // SquareLine Studio UI
 #include "GForceUI.h"     // Modular G-Force handling
-#include "ui_hook.h"      // <-- Add this include
+#include "ui_hook.h"      // Hook LVGL objects to GForceUI
 
 FILE *logFile = NULL;
 extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
+extern float peak_accel, peak_brake, peak_left, peak_right; // Peaks from GForceUI
+
 #define UPDATE_RATE_MS 50
-
-// ---------- Simple smoothing ----------
-#define SMOOTH_FACTOR 0.2
-float smoothed_ax = 0;
-float smoothed_ay = 0;
-float smoothed_az = 0;
-
-// ---------- Map function ----------
-int mapFloatToGauge(float value, float min_val, float max_val, int gauge_min, int gauge_max) {
-    if (value < min_val) value = min_val;
-    if (value > max_val) value = max_val;
-    return (int)((value - min_val) * (gauge_max - gauge_min) / (max_val - min_val) + gauge_min);
-}
 
 // ---------- Helper: generate unique filename ----------
 static void generate_log_filename(char *filename, int max_len) {
@@ -68,7 +57,8 @@ void app_main(void) {
 
     // ---------- Initialize UI ----------
     ui_init();
-    hook_gforce_ui();   // <-- Hook LVGL objects to GForceUI
+    hook_gforce_ui();   // Connect SquareLine LVGL objects to GForceUI
+    if (ui_dot) lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
     printf("✅ UI loaded and hooks applied.\n");
 
     // ---------- Generate log filename ----------
@@ -92,20 +82,15 @@ void app_main(void) {
 
         getAccelerometerData();    // Read accelerometer
 
-        // ---------- Apply simple smoothing ----------
-        smoothed_ax = smoothed_ax * (1.0 - SMOOTH_FACTOR) + ax * SMOOTH_FACTOR;
-        smoothed_ay = smoothed_ay * (1.0 - SMOOTH_FACTOR) + ay * SMOOTH_FACTOR;
-        smoothed_az = smoothed_az * (1.0 - SMOOTH_FACTOR) + az * SMOOTH_FACTOR;
-
         // ---------- Update UI ----------
-        update_gforce_ui(smoothed_ax, smoothed_ay, smoothed_az);
+        update_gforce_ui(ax, ay, az);  // GForceUI handles smoothing & gauge updates
 
         // ---------- Log to SD ----------
         if (logFile) {
             fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                     datetime.year, datetime.month, datetime.day,
                     datetime.hour, datetime.minute, datetime.second,
-                    smoothed_ax, smoothed_ay, smoothed_az,
+                    ax, ay, az,
                     peak_accel, peak_brake, peak_left, peak_right);
             fflush(logFile);
         }
