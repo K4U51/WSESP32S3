@@ -1,23 +1,12 @@
 #pragma once
 #include "lvgl.h"
-#include "RTC_PCF85063.h"
 
-// ---------- Live G-Force readings ----------
-extern float ax;
-extern float ay;
-extern float az;
+// ---------- Accelerometer / G-Force data ----------
+extern float ax, ay, az;
+extern float smoothed_ax, smoothed_ay;
+extern float peak_accel, peak_brake, peak_left, peak_right;
 
-// ---------- Smoothed values ----------
-extern float smoothed_ax;
-extern float smoothed_ay;
-
-// ---------- Peak values ----------
-extern float peak_accel;
-extern float peak_brake;
-extern float peak_left;
-extern float peak_right;
-
-// ---------- LVGL Object References ----------
+// ---------- LVGL Objects ----------
 extern lv_obj_t *ui_dot;
 extern lv_obj_t *ui_label_left;
 extern lv_obj_t *ui_label_right;
@@ -28,6 +17,11 @@ extern lv_obj_t *ui_label_peak_brake;
 extern lv_obj_t *ui_label_peak_left;
 extern lv_obj_t *ui_label_peak_right;
 
+extern lv_obj_t *ui_gauge_accel;
+extern lv_obj_t *ui_gauge_brake;
+extern lv_obj_t *ui_gauge_left;
+extern lv_obj_t *ui_gauge_right;
+
 // ---------- Functions ----------
 void getAccelerometerData(void);
-void update_gforce_ui(float ax, float ay, float az);
+void update_gforce_ui(float ax_val, float ay_val, float az_val);
