@@ -21,6 +21,12 @@
 // ---------- Global Variables ----------
 float ax = 0, ay = 0, az = 0;
 float smoothed_ax = 0, smoothed_ay = 0;
+
+float peak_accel = 0;
+float peak_brake = 0;
+float peak_left = 0;
+float peak_right = 0;
+
 FILE *logFile = NULL;
 extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
@@ -32,13 +38,17 @@ extern lv_obj_t *ui_label_right;
 extern lv_obj_t *ui_label_accel;
 extern lv_obj_t *ui_label_brake;
 
+// Peak labels (add these in SquareLine and export)
+extern lv_obj_t *ui_label_peak_accel;
+extern lv_obj_t *ui_label_peak_brake;
+extern lv_obj_t *ui_label_peak_left;
+extern lv_obj_t *ui_label_peak_right;
+
 // ---------- Dial Settings ----------
 #define DIAL_CENTER_X 240
 #define DIAL_CENTER_Y 240
 #define DIAL_SCALE    90.0f
 #define UPDATE_RATE_MS 50
-
-// ---------- Lerp Factor (0–1: smaller = smoother) ----------
 #define LERP_FACTOR 0.15f
 
 // ---------- Helper: Linear Interpolation ----------
@@ -51,7 +61,7 @@ void getAccelerometerData() {
     QMI8658_Read_Accel(&ax, &ay, &az);
 }
 
-// ---------- Update G-Force Visualization ----------
+// ---------- Update G-Force UI and Peaks ----------
 void update_gforce_ui(float ax, float ay, float az) {
     // Clamp ±1.5g
     if (ax > 1.5f) ax = 1.5f;
@@ -59,44 +69,41 @@ void update_gforce_ui(float ax, float ay, float az) {
     if (ay > 1.5f) ay = 1.5f;
     if (ay < -1.5f) ay = -1.5f;
 
-    // Apply smoothing
+    // Smooth readings
     smoothed_ax = lerp(smoothed_ax, ax, LERP_FACTOR);
     smoothed_ay = lerp(smoothed_ay, ay, LERP_FACTOR);
 
-    // Convert G-force → pixel displacement
+    // Update dial dot
     int16_t dot_x = DIAL_CENTER_X + (int16_t)(smoothed_ax * DIAL_SCALE);
     int16_t dot_y = DIAL_CENTER_Y - (int16_t)(smoothed_ay * DIAL_SCALE);
+    if (ui_dot) lv_obj_set_pos(ui_dot, dot_x, dot_y);
 
-    // Move dot
-    if (ui_dot)
-        lv_obj_set_pos(ui_dot, dot_x, dot_y);
-
-    // Update labels for live values
+    // Update live labels
     char buf[16];
+    if (ui_label_accel) { sprintf(buf, "%.2f", smoothed_ay > 0 ? smoothed_ay : 0); lv_label_set_text(ui_label_accel, buf); }
+    if (ui_label_brake) { sprintf(buf, "%.2f", smoothed_ay < 0 ? -smoothed_ay : 0); lv_label_set_text(ui_label_brake, buf); }
+    if (ui_label_left) { sprintf(buf, "%.2f", smoothed_ax < 0 ? -smoothed_ax : 0); lv_label_set_text(ui_label_left, buf); }
+    if (ui_label_right) { sprintf(buf, "%.2f", smoothed_ax > 0 ? smoothed_ax : 0); lv_label_set_text(ui_label_right, buf); }
 
-    if (ui_label_accel) {
-        sprintf(buf, "%.2f", smoothed_ay > 0 ? smoothed_ay : 0);
-        lv_label_set_text(ui_label_accel, buf);
-    }
-    if (ui_label_brake) {
-        sprintf(buf, "%.2f", smoothed_ay < 0 ? -smoothed_ay : 0);
-        lv_label_set_text(ui_label_brake, buf);
-    }
-    if (ui_label_left) {
-        sprintf(buf, "%.2f", smoothed_ax < 0 ? -smoothed_ax : 0);
-        lv_label_set_text(ui_label_left, buf);
-    }
-    if (ui_label_right) {
-        sprintf(buf, "%.2f", smoothed_ax > 0 ? smoothed_ax : 0);
-        lv_label_set_text(ui_label_right, buf);
-    }
+    // Update peaks
+    if (smoothed_ay > peak_accel) peak_accel = smoothed_ay;
+    if (smoothed_ay < -peak_brake) peak_brake = -smoothed_ay;
+    if (smoothed_ax < -peak_left) peak_left = -smoothed_ax;
+    if (smoothed_ax > peak_right) peak_right = smoothed_ax;
+
+    // Update peak labels
+    if (ui_label_peak_accel) { sprintf(buf, "%.2f", peak_accel); lv_label_set_text(ui_label_peak_accel, buf); }
+    if (ui_label_peak_brake) { sprintf(buf, "%.2f", peak_brake); lv_label_set_text(ui_label_peak_brake, buf); }
+    if (ui_label_peak_left) { sprintf(buf, "%.2f", peak_left); lv_label_set_text(ui_label_peak_left, buf); }
+    if (ui_label_peak_right) { sprintf(buf, "%.2f", peak_right); lv_label_set_text(ui_label_peak_right, buf); }
 }
+
 // ---------- Main App ----------
 void app_main(void)
 {
     printf("🚀 Starting G-Force UI with SquareLine...\n");
 
-    // ---------- Initialize Hardware ----------
+    // Hardware init
     Wireless_Init();
     Flash_Searching();
     I2C_Init();
@@ -108,133 +115,57 @@ void app_main(void)
     SD_Init();
     LVGL_Init();
 
-    // ---------- Initialize SquareLine UI ----------
+    // UI init
     ui_init();
     printf("✅ UI loaded.\n");
+    if (ui_dot) lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
 
-    // Center dot initially
-    if (ui_dot)
-        lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
-
-    // ---------- Read RTC before filename ----------
+    // Read RTC for filename
     PCF85063_Read_Time(&datetime);
-
-    // ---------- Generate unique filename with capped session ----------
-    char filename[128];
-    int session = 1;
-    const int MAX_SESSION = 999;
-
-    do {
-        sprintf(filename, "/sdcard/gforce_%04d%02d%02d_%02d%02d%02d_%d.csv",
-                datetime.year, datetime.month, datetime.day,
-                datetime.hour, datetime.minute, datetime.second,
-                session);
-        FILE *file = fopen(filename, "r");
-        if (file) {
-            fclose(file);
-            session++;
-            if (session > MAX_SESSION) {
-                printf("⚠️ Session number exceeded max, using last available.\n");
-                break;
-            }
-        } else {
-            break; // file does not exist, safe to use
-        }
-    } while (1);
-
-    // ---------- Open file for writing ----------
-    logFile = fopen(filename, "w");
-    if (logFile) {
-        fprintf(logFile, "Timestamp,Ax,Ay,Az\n");
-        fflush(logFile);
-        printf("✅ Logging started: %s\n", filename);
-    } else {
-        printf("⚠️ Could not open SD log file: %s\n", filename);
-    }
-
-// ---------- Main Application ----------
-void app_main(void)
-{
-    printf("🚀 Starting G-Force UI with SquareLine...\n");
-
-    // Initialize hardware
-    Wireless_Init();
-    Flash_Searching();
-    I2C_Init();
-    PCF85063_Init();
-    QMI8658_Init();
-    EXIO_Init();
-    LCD_Init();
-    Touch_Init();
-    SD_Init();
-    LVGL_Init();
-
-    // Initialize UI
-    ui_init();
-    printf("✅ UI loaded.\n");
-
-    // Center dot
-    if (ui_dot)
-        lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
-
-    // Read RTC first
-    PCF85063_Read_Time(&datetime);
-
-    // ---------- Initialize Peaks for this session ----------
-    peak_ax_left = 0.0f;
-    peak_ax_right = 0.0f;
-    peak_ay_accel = 0.0f;
-    peak_ay_brake = 0.0f;
 
     // Generate unique filename with session counter
     char filename[128];
     int session = 1;
     do {
-        if (session > 999) session = 999; // safety cap
         sprintf(filename, "/sdcard/gforce_%04d%02d%02d_%02d%02d%02d_%d.csv",
                 datetime.year, datetime.month, datetime.day,
                 datetime.hour, datetime.minute, datetime.second,
                 session);
         FILE *file = fopen(filename, "r");
-        if (file) {
-            fclose(file);
-            session++;
-        } else {
-            break;
-        }
-    } while (1);
+        if (file) { fclose(file); session++; if(session > 999) break; } else { break; }
+    } while(1);
 
-    // Open file for writing
+    // Open log file
     logFile = fopen(filename, "w");
     if (logFile) {
-        fprintf(logFile, "Timestamp,Ax,Ay,Az,Peak_Left,Peak_Right,Peak_Accel,Peak_Brake\n");
+        fprintf(logFile, "Timestamp,Ax,Ay,Az,PeakAccel,PeakBrake,PeakLeft,PeakRight\n");
         fflush(logFile);
         printf("✅ Logging started: %s\n", filename);
     } else {
         printf("⚠️ Could not open SD log file: %s\n", filename);
     }
 
-    // ---------- Main Loop ----------
-    while (1) {
+    // Main loop
+    while(1) {
         vTaskDelay(pdMS_TO_TICKS(UPDATE_RATE_MS));
 
         lv_timer_handler();             // Refresh LVGL
         PCF85063_Read_Time(&datetime);  // Update RTC
         getAccelerometerData();         // Read accelerometer
-        update_gforce_ui(ax, ay, az);   // Update UI and peaks
 
-        // Log all values including peaks
+        // Update UI and peaks
+        update_gforce_ui(ax, ay, az);
+
+        // Log to SD including peaks
         if (logFile) {
             fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                     datetime.year, datetime.month, datetime.day,
                     datetime.hour, datetime.minute, datetime.second,
                     ax, ay, az,
-                    peak_ax_left, peak_ax_right,
-                    peak_ay_accel, peak_ay_brake);
+                    peak_accel, peak_brake, peak_left, peak_right);
             fflush(logFile);
         }
     }
 
-    if (logFile)
-        fclose(logFile);
+    if (logFile) fclose(logFile);
 }
