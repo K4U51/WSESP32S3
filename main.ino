@@ -21,6 +21,19 @@ extern RTC_DateTypeDef datetime;  // from PCF85063 RTC
 
 #define UPDATE_RATE_MS 50
 
+// ---------- Simple smoothing ----------
+#define SMOOTH_FACTOR 0.2
+float smoothed_ax = 0;
+float smoothed_ay = 0;
+float smoothed_az = 0;
+
+// ---------- Map function ----------
+int mapFloatToGauge(float value, float min_val, float max_val, int gauge_min, int gauge_max) {
+    if (value < min_val) value = min_val;
+    if (value > max_val) value = max_val;
+    return (int)((value - min_val) * (gauge_max - gauge_min) / (max_val - min_val) + gauge_min);
+}
+
 // ---------- Helper: generate unique filename ----------
 static void generate_log_filename(char *filename, int max_len) {
     PCF85063_Read_Time(&datetime); // read RTC first
@@ -56,14 +69,12 @@ void app_main(void) {
     ui_init();
     printf("✅ UI loaded.\n");
 
-    // Set initial dot position
     if (ui_dot) lv_obj_set_pos(ui_dot, 240, 240);
 
     // ---------- Generate log filename ----------
     char filename[128];
     generate_log_filename(filename, sizeof(filename));
 
-    // Open log file
     logFile = fopen(filename, "w");
     if (logFile) {
         fprintf(logFile, "Timestamp,Ax,Ay,Az,PeakAccel,PeakBrake,PeakLeft,PeakRight\n");
@@ -78,15 +89,31 @@ void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(UPDATE_RATE_MS));
 
         lv_timer_handler();        // Refresh LVGL
-        getAccelerometerData();    // Read accelerometer
-        update_gforce_ui(ax, ay, az); // Update UI and peaks
 
-        // Log to SD
+        getAccelerometerData();    // Read accelerometer
+
+        // ---------- Apply simple smoothing ----------
+        smoothed_ax = smoothed_ax * (1.0 - SMOOTH_FACTOR) + ax * SMOOTH_FACTOR;
+        smoothed_ay = smoothed_ay * (1.0 - SMOOTH_FACTOR) + ay * SMOOTH_FACTOR;
+        smoothed_az = smoothed_az * (1.0 - SMOOTH_FACTOR) + az * SMOOTH_FACTOR;
+
+        // ---------- Map values to gauge range ----------
+        int gauge_ax = mapFloatToGauge(smoothed_ax, -2.5f, 2.5f, 0, 100);  // Adjust min/max to match your SquareLine gauge
+        int gauge_ay = mapFloatToGauge(smoothed_ay, -2.5f, 2.5f, 0, 100);
+        int gauge_az = mapFloatToGauge(smoothed_az, -2.5f, 2.5f, 0, 100);
+
+        // ---------- Update UI ----------
+        update_gforce_ui(smoothed_ax, smoothed_ay, smoothed_az);
+        
+        // Example: if you have a specific gauge object from SquareLine:
+        if (ui_gauge) lv_gauge_set_value(ui_gauge, 0, gauge_ax); // primary gauge axis
+
+        // ---------- Log to SD ----------
         if (logFile) {
             fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                     datetime.year, datetime.month, datetime.day,
                     datetime.hour, datetime.minute, datetime.second,
-                    ax, ay, az,
+                    smoothed_ax, smoothed_ay, smoothed_az,
                     peak_accel, peak_brake, peak_left, peak_right);
             fflush(logFile);
         }
