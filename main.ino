@@ -152,6 +152,68 @@ void app_main(void)
         printf("⚠️ Could not open SD log file: %s\n", filename);
     }
 
+// ---------- Main Application ----------
+void app_main(void)
+{
+    printf("🚀 Starting G-Force UI with SquareLine...\n");
+
+    // Initialize hardware
+    Wireless_Init();
+    Flash_Searching();
+    I2C_Init();
+    PCF85063_Init();
+    QMI8658_Init();
+    EXIO_Init();
+    LCD_Init();
+    Touch_Init();
+    SD_Init();
+    LVGL_Init();
+
+    // Initialize UI
+    ui_init();
+    printf("✅ UI loaded.\n");
+
+    // Center dot
+    if (ui_dot)
+        lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
+
+    // Read RTC first
+    PCF85063_Read_Time(&datetime);
+
+    // ---------- Initialize Peaks for this session ----------
+    peak_ax_left = 0.0f;
+    peak_ax_right = 0.0f;
+    peak_ay_accel = 0.0f;
+    peak_ay_brake = 0.0f;
+
+    // Generate unique filename with session counter
+    char filename[128];
+    int session = 1;
+    do {
+        if (session > 999) session = 999; // safety cap
+        sprintf(filename, "/sdcard/gforce_%04d%02d%02d_%02d%02d%02d_%d.csv",
+                datetime.year, datetime.month, datetime.day,
+                datetime.hour, datetime.minute, datetime.second,
+                session);
+        FILE *file = fopen(filename, "r");
+        if (file) {
+            fclose(file);
+            session++;
+        } else {
+            break;
+        }
+    } while (1);
+
+    // Open file for writing
+    logFile = fopen(filename, "w");
+    if (logFile) {
+        fprintf(logFile, "Timestamp,Ax,Ay,Az,Peak_Left,Peak_Right,Peak_Accel,Peak_Brake\n");
+        fflush(logFile);
+        printf("✅ Logging started: %s\n", filename);
+    } else {
+        printf("⚠️ Could not open SD log file: %s\n", filename);
+    }
+
     // ---------- Main Loop ----------
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(UPDATE_RATE_MS));
@@ -159,22 +221,17 @@ void app_main(void)
         lv_timer_handler();             // Refresh LVGL
         PCF85063_Read_Time(&datetime);  // Update RTC
         getAccelerometerData();         // Read accelerometer
+        update_gforce_ui(ax, ay, az);   // Update UI and peaks
 
-        // Update UI with smooth motion
-        update_gforce_ui(ax, ay, az);
-
-        // Log to SD if file open
+        // Log all values including peaks
         if (logFile) {
-            int ret = fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f\n",
+            fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                     datetime.year, datetime.month, datetime.day,
                     datetime.hour, datetime.minute, datetime.second,
-                    ax, ay, az);
-            if (ret < 0) {
-                printf("⚠️ SD write failed\n");
-                // Optional: try reopening SD/log file here
-            } else {
-                fflush(logFile);
-            }
+                    ax, ay, az,
+                    peak_ax_left, peak_ax_right,
+                    peak_ay_accel, peak_ay_brake);
+            fflush(logFile);
         }
     }
 
