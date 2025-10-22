@@ -2,7 +2,6 @@
 #include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_vfs.h"   // For file existence check
 
 #include "TCA9554PWR.h"
 #include "PCF85063.h"
@@ -92,7 +91,7 @@ void update_gforce_ui(float ax, float ay, float az) {
         lv_label_set_text(ui_label_right, buf);
     }
 }
- // ---------- Main App ----------
+// ---------- Main App ----------
 void app_main(void)
 {
     printf("🚀 Starting G-Force UI with SquareLine...\n");
@@ -117,12 +116,14 @@ void app_main(void)
     if (ui_dot)
         lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
 
-    // ---------- Read RTC first ----------
+    // ---------- Read RTC before filename ----------
     PCF85063_Read_Time(&datetime);
 
-    // ---------- Generate unique filename with session counter ----------
+    // ---------- Generate unique filename with capped session ----------
     char filename[128];
     int session = 1;
+    const int MAX_SESSION = 999;
+
     do {
         sprintf(filename, "/sdcard/gforce_%04d%02d%02d_%02d%02d%02d_%d.csv",
                 datetime.year, datetime.month, datetime.day,
@@ -132,12 +133,16 @@ void app_main(void)
         if (file) {
             fclose(file);
             session++;
+            if (session > MAX_SESSION) {
+                printf("⚠️ Session number exceeded max, using last available.\n");
+                break;
+            }
         } else {
             break; // file does not exist, safe to use
         }
     } while (1);
 
-    // Open the file for writing
+    // ---------- Open file for writing ----------
     logFile = fopen(filename, "w");
     if (logFile) {
         fprintf(logFile, "Timestamp,Ax,Ay,Az\n");
@@ -158,13 +163,18 @@ void app_main(void)
         // Update UI with smooth motion
         update_gforce_ui(ax, ay, az);
 
-        // Log to SD
+        // Log to SD if file open
         if (logFile) {
-            fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f\n",
+            int ret = fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f\n",
                     datetime.year, datetime.month, datetime.day,
                     datetime.hour, datetime.minute, datetime.second,
                     ax, ay, az);
-            fflush(logFile);
+            if (ret < 0) {
+                printf("⚠️ SD write failed\n");
+                // Optional: try reopening SD/log file here
+            } else {
+                fflush(logFile);
+            }
         }
     }
 
