@@ -2,11 +2,14 @@
 #include "QMI8658.h"
 #include <stdio.h>
 
+// Accelerometer readings
 float ax = 0, ay = 0, az = 0;
 float smoothed_ax = 0, smoothed_ay = 0;
+
+// Peak tracking
 float peak_accel = 0, peak_brake = 0, peak_left = 0, peak_right = 0;
 
-// LVGL object pointers from ui_init()
+// LVGL object pointers (hooked from ui_hook)
 lv_obj_t *ui_dot = NULL;
 lv_obj_t *ui_label_left = NULL;
 lv_obj_t *ui_label_right = NULL;
@@ -24,15 +27,14 @@ lv_obj_t *ui_gauge_right = NULL;
 #define DIAL_CENTER_X 240
 #define DIAL_CENTER_Y 240
 #define DIAL_SCALE    90.0f
-#define LERP_FACTOR 0.15f
-#define G_MAX 2.5f    // maximum G for mapping
+#define LERP_FACTOR   0.15f
+#define G_MAX         2.5f
 
 static inline float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
-// Map ±G to gauge integer range
-static int mapGToGauge(float g_val, int gauge_min, int gauge_max) {
+static int mapGToGauge(float g_val, int gauge_min = 0, int gauge_max = 100) {
     if (g_val < -G_MAX) g_val = -G_MAX;
     if (g_val >  G_MAX) g_val =  G_MAX;
     return (int)((g_val + G_MAX) * (gauge_max - gauge_min) / (2.0f * G_MAX) + gauge_min);
@@ -43,7 +45,7 @@ void getAccelerometerData(void) {
 }
 
 void update_gforce_ui(float ax_val, float ay_val, float az_val) {
-    // Clamp to ±G_MAX
+    // Clamp
     if (ax_val > G_MAX) ax_val = G_MAX;
     if (ax_val < -G_MAX) ax_val = -G_MAX;
     if (ay_val > G_MAX) ay_val = G_MAX;
@@ -61,10 +63,10 @@ void update_gforce_ui(float ax_val, float ay_val, float az_val) {
     char buf[16];
 
     // Live labels
-    if (ui_label_accel) { sprintf(buf, "%.2f", smoothed_ay > 0 ? smoothed_ay : 0); lv_label_set_text(ui_label_accel, buf); }
-    if (ui_label_brake) { sprintf(buf, "%.2f", smoothed_ay < 0 ? -smoothed_ay : 0); lv_label_set_text(ui_label_brake, buf); }
-    if (ui_label_left) { sprintf(buf, "%.2f", smoothed_ax < 0 ? -smoothed_ax : 0); lv_label_set_text(ui_label_left, buf); }
-    if (ui_label_right) { sprintf(buf, "%.2f", smoothed_ax > 0 ? smoothed_ax : 0); lv_label_set_text(ui_label_right, buf); }
+    if (ui_label_accel) lv_label_set_text_fmt(ui_label_accel, "%.2f", smoothed_ay > 0 ? smoothed_ay : 0);
+    if (ui_label_brake) lv_label_set_text_fmt(ui_label_brake, "%.2f", smoothed_ay < 0 ? -smoothed_ay : 0);
+    if (ui_label_left) lv_label_set_text_fmt(ui_label_left, "%.2f", smoothed_ax < 0 ? -smoothed_ax : 0);
+    if (ui_label_right) lv_label_set_text_fmt(ui_label_right, "%.2f", smoothed_ax > 0 ? smoothed_ax : 0);
 
     // Peak tracking
     if (smoothed_ay > peak_accel) peak_accel = smoothed_ay;
@@ -73,14 +75,14 @@ void update_gforce_ui(float ax_val, float ay_val, float az_val) {
     if (smoothed_ax > peak_right) peak_right = smoothed_ax;
 
     // Peak labels
-    if (ui_label_peak_accel) { sprintf(buf, "%.2f", peak_accel); lv_label_set_text(ui_label_peak_accel, buf); }
-    if (ui_label_peak_brake) { sprintf(buf, "%.2f", peak_brake); lv_label_set_text(ui_label_peak_brake, buf); }
-    if (ui_label_peak_left) { sprintf(buf, "%.2f", peak_left); lv_label_set_text(ui_label_peak_left, buf); }
-    if (ui_label_peak_right) { sprintf(buf, "%.2f", peak_right); lv_label_set_text(ui_label_peak_right, buf); }
+    if (ui_label_peak_accel) lv_label_set_text_fmt(ui_label_peak_accel, "%.2f", peak_accel);
+    if (ui_label_peak_brake) lv_label_set_text_fmt(ui_label_peak_brake, "%.2f", peak_brake);
+    if (ui_label_peak_left) lv_label_set_text_fmt(ui_label_peak_left, "%.2f", peak_left);
+    if (ui_label_peak_right) lv_label_set_text_fmt(ui_label_peak_right, "%.2f", peak_right);
 
-    // ---------- Update SquareLine Gauges ----------
-    if (ui_gauge_accel) lv_gauge_set_value(ui_gauge_accel, 0, mapGToGauge(smoothed_ay, 0, 100));
-    if (ui_gauge_brake) lv_gauge_set_value(ui_gauge_brake, 0, mapGToGauge(-smoothed_ay, 0, 100));
-    if (ui_gauge_left) lv_gauge_set_value(ui_gauge_left, 0, mapGToGauge(-smoothed_ax, 0, 100));
-    if (ui_gauge_right) lv_gauge_set_value(ui_gauge_right, 0, mapGToGauge(smoothed_ax, 0, 100));
+    // Update SquareLine gauges
+    if (ui_gauge_accel) lv_gauge_set_value(ui_gauge_accel, 0, mapGToGauge(smoothed_ay));
+    if (ui_gauge_brake) lv_gauge_set_value(ui_gauge_brake, 0, mapGToGauge(-smoothed_ay));
+    if (ui_gauge_left) lv_gauge_set_value(ui_gauge_left, 0, mapGToGauge(-smoothed_ax));
+    if (ui_gauge_right) lv_gauge_set_value(ui_gauge_right, 0, mapGToGauge(smoothed_ax));
 }
