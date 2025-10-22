@@ -92,7 +92,6 @@ void update_gforce_ui(float ax, float ay, float az) {
     }
 }
 
-/// ---------- Main Application ----------
 void app_main(void)
 {
     printf("🚀 Starting G-Force UI with SquareLine...\n");
@@ -117,10 +116,22 @@ void app_main(void)
     if (ui_dot)
         lv_obj_set_pos(ui_dot, DIAL_CENTER_X, DIAL_CENTER_Y);
 
+    // ---------- Read RTC to use for filename ----------
+    PCF85063_Read_Time(&datetime);
+
     // ---------- Open SD Log with unique filename ----------
     char filename[64];
-    sprintf(filename, "/sdcard/gforce_%02d%02d%02d.csv",
-            datetime.hour, datetime.minute, datetime.second);
+    int session = 0;
+
+    FILE *tempFile;
+    do {
+        sprintf(filename, "/sdcard/gforce_%04d%02d%02d_%02d%02d%02d_%d.csv",
+                datetime.year, datetime.month, datetime.day,
+                datetime.hour, datetime.minute, datetime.second,
+                session++);
+        tempFile = fopen(filename, "r");
+        if (tempFile) fclose(tempFile);  // File exists, increment session
+    } while (tempFile != NULL);
 
     logFile = fopen(filename, "w");
     if (logFile) {
@@ -144,7 +155,8 @@ void app_main(void)
 
         // Log to SD
         if (logFile) {
-            fprintf(logFile, "%02d:%02d:%02d,%.3f,%.3f,%.3f\n",
+            fprintf(logFile, "%04d-%02d-%02d %02d:%02d:%02d,%.3f,%.3f,%.3f\n",
+                    datetime.year, datetime.month, datetime.day,
                     datetime.hour, datetime.minute, datetime.second,
                     ax, ay, az);
             fflush(logFile);
@@ -153,3 +165,4 @@ void app_main(void)
 
     if (logFile)
         fclose(logFile);
+}
