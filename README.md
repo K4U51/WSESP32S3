@@ -1,28 +1,24 @@
 # WSESP32S3
-
-Dial background
-Image
-ui_dial_image
-
-Dot marker
-Object / Circle
-ui_dot
-
-Left G label
-Label
-ui_label_left
-
-Right G label
-Label
-ui_label_right
-
-Accel (forward) label
-Label
-ui_label_accel
-
-Brake (rearward) label
-Label
-ui_label_brake
+1.	Background Image — ui_bg
+	•	Your custom gauge face PNG.
+2.	Dot Object — ui_dot
+	•	Small circle or image placed in the center (240,240).
+	•	Will move according to G data.
+3.	Live Labels —
+	•	ui_label_accel (bottom)
+	•	ui_label_brake (top)
+	•	ui_label_left (left)
+	•	ui_label_right (right)
+4.	Peak Labels — optional overlay or small text near edges
+	•	ui_label_peak_accel
+	•	ui_label_peak_brake
+	•	ui_label_peak_left
+	•	ui_label_peak_right
+5.	Gauges (optional) — If you plan to show analog gauges
+	•	ui_gauge_accel
+	•	ui_gauge_brake
+	•	ui_gauge_left
+	•	ui_gauge_right
 
 ``` 
 WSESP32S3/
